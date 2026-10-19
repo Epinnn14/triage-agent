@@ -18,3 +18,39 @@
 | 4:30–4:50 | README "How AI was used" | "I built this with Claude from my own design spec. I chose the categories, guardrails and tests, and I checked the outputs myself. Code and README are on GitHub. Thanks!" |
 
 **Checklist the reviewer will look for:** live run (not slides) ✓ · 3–5 min ✓ · narration ✓ · one design decision ✓ · one limitation ✓.
+
+---
+
+## Commands, in order (Windows PowerShell)
+
+### A. Before you hit record (off camera)
+```powershell
+cd "C:\Flyrank\Portofolio Flyrank\Documentation and Demo Video\triage-agent"
+Set-Alias python "C:\Users\Kevin\AppData\Local\Programs\Python\Python311\python.exe"
+
+# Type the key hidden: only asterisks show, the key never appears on screen or in history
+$k = Read-Host "Gemini API key" -AsSecureString
+$env:GEMINI_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($k))
+Remove-Variable k
+
+Remove-Item -Recurse -Force out -ErrorAction SilentlyContinue   # start from an empty output folder
+Clear-History; cls                                               # wipe the screen and the command history
+```
+
+### B. On camera
+| Step | Command | What it shows |
+|---|---|---|
+| 1 | `python -m triage_agent --list-models` | Key works (lists models), and no key is printed. Good "is it connected?" opener. |
+| 2 | `python -m unittest discover -s tests` | 9 offline tests pass (guardrails: no send, no secret leak, no price commitment). |
+| 3 | `code fixtures\inbox_sample.json` (or `notepad`) | The 10 sample emails. |
+| 4 | `python -m triage_agent --provider gemini --verbose` | The live run plus the briefing. If you see `→ trying next model`, say: "the first model is overloaded, so it falls back automatically." |
+| 5 | `notepad out\drafts\m06.txt` | Budi's quote email: a neutral draft, no price. |
+| 6 | `notepad out\tasks.json` | Tasks with deadlines. |
+| 7 | `code triage_agent\tools.py` then `code triage_agent\guardrails.py` | Design decision: no send/delete function exists, and `safe_draft`. |
+| 8 | `python -m evals.run_evals --provider gemini` | Score live (takes about 1–2 min, so you can talk over it or cut the wait in editing). |
+| 9 | `notepad evals\RESULTS_rules.md` | Limitation: the rules baseline misses TC-07. |
+
+Tips:
+- Never run `$env:GEMINI_API_KEY` or `echo $env:GEMINI_API_KEY` on camera.
+- Don't press ↑ (arrow up) to reuse commands from before recording. `Clear-History` already removed them, but stay safe.
+- The eval takes a while because calls are paced for the free tier. Cut that wait out in editing if you like, but keep the final score on screen.
