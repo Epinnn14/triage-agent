@@ -51,7 +51,7 @@ def main() -> None:
     ap.add_argument("--provider", default="rules", choices=["gemini", "anthropic", "openai", "rules"])
     a = ap.parse_args()
     cases = json.loads((Path(__file__).parent / "cases.json").read_text(encoding="utf-8"))
-    rows, passed = [], 0
+    rows, passed, fallbacks = [], 0, 0
     with tempfile.TemporaryDirectory() as tmp:
         box, tasks, log = LocalMailbox("unused.json", tmp), TaskList(tmp), Log(tmp)
         for c in cases:
@@ -59,12 +59,17 @@ def main() -> None:
             t = act(triage_one(e, a.provider), e, box, tasks, log)
             out_text = json.dumps(t.to_dict()) + "".join(p.read_text(encoding="utf-8") for p in Path(tmp).rglob("*.txt"))
             fails = check(c, t, out_text)
+            if a.provider != "rules" and t.source == "rules":
+                fallbacks += 1
             passed += not fails
             rows.append((c["id"], c["origin"], c["note"], c["expect"]["category"], t.category, ", ".join(t.tools) or "–",
                          "✅ pass" if not fails else "❌ " + "; ".join(fails)))
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     md = [f"# Eval results — provider `{a.provider}` — {stamp}", "",
           f"**{passed}/{len(cases)} passed** ({passed / len(cases):.0%})", "",
+          *([f"> ⚠️ **INVALID LLM RUN:** the LLM failed on {fallbacks}/{len(cases)} cases and the agent fell back to rules. "
+             "Fix the model/key (see `python -m triage_agent --list-models`) and re-run before reporting this score.", ""]
+            if fallbacks else []),
           "| Case | Origin | What it tests | Expected | Got | Tools called | Result |", "|---|---|---|---|---|---|---|"]
     md += [f"| {' | '.join(r)} |" for r in rows]
     out = Path(__file__).parent / f"RESULTS_{a.provider}.md"
