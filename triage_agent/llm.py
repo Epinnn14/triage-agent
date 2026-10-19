@@ -184,9 +184,14 @@ def parse_and_validate(raw: str) -> dict:
         raise LLMError(f"bad category {data.get('category')!r}")
     if not isinstance(data.get("summary"), str) or not data["summary"].strip():
         raise LLMError("missing summary")
-    if data.get("deadline") not in (None, "") and not re.fullmatch(r"20\d\d-\d\d-\d\d(T\d\d:\d\d(:\d\d)?)?", str(data["deadline"])):
-        raise LLMError(f"bad deadline {data.get('deadline')!r}")
-    data["deadline"] = data.get("deadline") or None
+    dl = data.get("deadline")
+    if dl not in (None, "", "null"):
+        # accept ISO with seconds / timezone / 'Z' and normalise to YYYY-MM-DD or YYYY-MM-DDTHH:MM (local time as written)
+        m = re.fullmatch(r"(20\d\d-\d\d-\d\d)(?:[T ](\d\d:\d\d)(?::\d\d(?:\.\d+)?)?)?(?:Z|[+-]\d\d:?\d\d)?", str(dl).strip())
+        if not m:
+            raise LLMError(f"bad deadline {dl!r}")
+        dl = m.group(1) + (f"T{m.group(2)}" if m.group(2) else "")
+    data["deadline"] = dl if dl not in ("", "null") else None
     data["needs_reply"] = bool(data.get("needs_reply"))
     data["flags"] = [f for f in (data.get("flags") or []) if f in ("contract_change", "contains_secret", "needs_human")]
     for k in ("action_item", "draft_reply"):
