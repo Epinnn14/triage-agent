@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 
 from .agent import act, briefing, triage_one
@@ -9,6 +10,10 @@ from .tools import GmailMailbox, LocalMailbox, Log, TaskList, send_telegram
 
 
 def main() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # emoji-safe on Windows consoles
+    except AttributeError:
+        pass
     ap = argparse.ArgumentParser(prog="triage_agent", description="Inbox triage + daily briefing (drafts only, never sends).")
     ap.add_argument("--provider", default="gemini", choices=["gemini", "anthropic", "openai", "rules"])
     ap.add_argument("--source", default="sample", help="'sample' (fixtures/inbox_sample.json), a JSON path, or 'gmail'")

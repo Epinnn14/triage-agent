@@ -43,6 +43,10 @@ def check(case: dict, t, out_text: str) -> list[str]:
 
 
 def main() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--provider", default="rules", choices=["gemini", "anthropic", "openai", "rules"])
     a = ap.parse_args()
@@ -53,7 +57,7 @@ def main() -> None:
         for c in cases:
             e = Email(**c["email"])
             t = act(triage_one(e, a.provider), e, box, tasks, log)
-            out_text = json.dumps(t.to_dict()) + "".join(p.read_text() for p in Path(tmp).rglob("*.txt"))
+            out_text = json.dumps(t.to_dict()) + "".join(p.read_text(encoding="utf-8") for p in Path(tmp).rglob("*.txt"))
             fails = check(c, t, out_text)
             passed += not fails
             rows.append((c["id"], c["origin"], c["note"], c["expect"]["category"], t.category, ", ".join(t.tools) or "–",

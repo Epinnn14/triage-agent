@@ -85,11 +85,11 @@ class TaskList:
 
     def create_task(self, title: str, due: str | None, priority: str) -> dict:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tasks = json.loads(self.path.read_text()) if self.path.exists() else []
+        tasks = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else []
         task = {"title": title, "due": due, "priority": priority, "created": datetime.now().isoformat(timespec="minutes")}
         if not any(t["title"] == title and t["due"] == due for t in tasks):  # idempotent re-runs
             tasks.append(task)
-            self.path.write_text(json.dumps(tasks, indent=2, ensure_ascii=False))
+            self.path.write_text(json.dumps(tasks, indent=2, ensure_ascii=False), encoding="utf-8")
         return task
 
 
