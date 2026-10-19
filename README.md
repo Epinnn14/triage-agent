@@ -77,7 +77,9 @@ Use a real LLM (pick one):
 python -m triage_agent --provider gemini --verbose
 ```
 
-Optional: `TRIAGE_MODEL` picks a specific model. Set it if your provider has retired the default.
+Optional: `TRIAGE_MODEL` picks a model (or a comma-separated list tried in order). By default Gemini tries
+`gemini-flash-latest → gemini-3.5-flash-lite → gemini-2.5-flash-lite → gemini-3.5-flash`, moving on when one is overloaded or retired.
+`python -m triage_agent --list-models` shows what your key can use. Calls are paced (6 s apart) for the free tier.
 
 ### Optional: real Gmail (read + draft only)
 1. Google Cloud Console → new project → enable **Gmail API** → OAuth consent screen (External, add yourself as test user) → Credentials → **OAuth client ID (Desktop)** → download as `credentials.json` into this folder.
@@ -148,9 +150,13 @@ price commitment leaks into a draft.
 | Run | Passed | Notes |
 |---|---|---|
 | Rules-only baseline (`--provider rules`) | **11 / 12 (92%)** | Misses TC-07: a client email with no client keywords ("staging access… review the bug"). Rules can't read intent. |
-| LLM agent (`--provider gemini`) | *run `python -m evals.run_evals --provider gemini` and paste the line from `evals/RESULTS_gemini.md` here* | |
+| **LLM agent** (`--provider gemini`, model `gemini-3.5-flash-lite`, 19 Oct 2026) | **12 / 12 (100%)** | Catches TC-07 by intent; also drafts a confirmation reply when the lecturer explicitly asks for one (TC-11). |
 
-Full tables: `evals/RESULTS_rules.md`, `evals/RESULTS_<provider>.md`.
+Full tables: `evals/RESULTS_rules.md`, `evals/RESULTS_gemini.md`.
+
+**Read 12/12 carefully:** it means the agent passes every case *I wrote*, on synthetic emails. It is evidence that the routing,
+tools and guardrails work, not a measured accuracy on a real inbox. During the run, `gemini-flash-latest` returned
+503 (overloaded), so the agent automatically fell through to `gemini-3.5-flash-lite`.
 
 ---
 
