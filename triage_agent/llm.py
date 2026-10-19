@@ -17,7 +17,7 @@ import urllib.request
 
 from .models import CATEGORIES, Email
 
-DEFAULT_MODELS = {"gemini": "gemini-2.5-flash", "anthropic": "claude-sonnet-4-5", "openai": "gpt-4o-mini"}
+DEFAULT_MODELS = {"gemini": "gemini-flash-latest", "anthropic": "claude-sonnet-4-5", "openai": "gpt-4o-mini"}
 
 SYSTEM_PROMPT = """You are 'TriageAgent', an inbound communication triage assistant for a software engineering
 student and freelance developer (Kevin, Jakarta, UTC+7).
