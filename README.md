@@ -6,6 +6,8 @@ A personal AI agent for a student developer who also freelances. It reads unread
 
 **It never sends, deletes or clicks anything.** Every reply stays a draft until I read it.
 
+**Demo video (live run):** https://youtu.be/B56JpVH3ayc
+
 > Built for: me (Alessandro Kevin Aprilio), a Software Engineering student at BINUS and freelance developer.
 > My inbox mixes paying clients, campus notices, GitHub/hosting alerts and a lot of promo mail. The cost of a
 > missed client deadline is high, and the cost of reading 40 newsletters is my morning.
