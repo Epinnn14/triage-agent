@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
@@ -66,7 +67,33 @@ def _post(url: str, payload: dict, headers: dict, timeout: int = 60) -> dict:
         raise LLMError(f"HTTP {e.code}: {str(detail)[:160]}") from None
 
 
+_last_call = [0.0]
+
+
 def call_llm(provider: str, user_text: str, model: str | None = None) -> str:
+    """Rate-limited call with backoff on 429 (quota/rate) and 503 (overloaded).
+
+    TRIAGE_MIN_INTERVAL (seconds between calls, default 6 for gemini = ~10 req/min, free-tier friendly).
+    """
+    interval = float(os.environ.get("TRIAGE_MIN_INTERVAL", "6" if provider == "gemini" else "0"))
+    delays = [10, 30, 60]
+    for attempt in range(len(delays) + 1):
+        wait = _last_call[0] + interval - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        _last_call[0] = time.monotonic()
+        try:
+            return _call_llm_once(provider, user_text, model)
+        except LLMError as e:
+            if attempt < len(delays) and str(e).startswith(("HTTP 429", "HTTP 503", "HTTP 500")):
+                print(f"    … {str(e)[:40]} — retrying in {delays[attempt]}s", flush=True)
+                time.sleep(delays[attempt])
+                continue
+            raise
+    raise LLMError("unreachable")
+
+
+def _call_llm_once(provider: str, user_text: str, model: str | None = None) -> str:
     model = model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODELS[provider]
     if provider == "gemini":
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
