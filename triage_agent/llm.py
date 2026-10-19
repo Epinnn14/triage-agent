@@ -18,6 +18,7 @@ import urllib.request
 
 from .models import CATEGORIES, Email
 
+FALLBACK_MODELS = {"gemini": ["gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-3.5-flash"]}
 DEFAULT_MODELS = {"gemini": "gemini-flash-latest", "anthropic": "claude-sonnet-4-5", "openai": "gpt-4o-mini"}
 
 SYSTEM_PROMPT = """You are 'TriageAgent', an inbound communication triage assistant for a software engineering
@@ -68,29 +69,56 @@ def _post(url: str, payload: dict, headers: dict, timeout: int = 60) -> dict:
 
 
 _last_call = [0.0]
+_working_model: dict = {}
+
+
+def _models_for(provider: str, model: str | None) -> list[str]:
+    raw = model or os.environ.get("TRIAGE_MODEL") or ",".join(FALLBACK_MODELS.get(provider, [DEFAULT_MODELS[provider]]))
+    models = [m.strip() for m in raw.split(",") if m.strip()]
+    if provider in _working_model and _working_model[provider] in models:  # stick with the model that last worked
+        models.remove(_working_model[provider])
+        models.insert(0, _working_model[provider])
+    return models
 
 
 def call_llm(provider: str, user_text: str, model: str | None = None) -> str:
-    """Rate-limited call with backoff on 429 (quota/rate) and 503 (overloaded).
+    """Rate-limited call. On 503/500 (overloaded) or 404 (model gone) it moves to the next model in the list;
+    on 429 (rate limit) it waits once and retries.
 
-    TRIAGE_MIN_INTERVAL (seconds between calls, default 6 for gemini = ~10 req/min, free-tier friendly).
+    TRIAGE_MODEL may be a comma-separated list, tried in order.
+    TRIAGE_MIN_INTERVAL = seconds between calls (default 6 for gemini, about 10 requests/min).
     """
     interval = float(os.environ.get("TRIAGE_MIN_INTERVAL", "6" if provider == "gemini" else "0"))
-    delays = [10, 30, 60]
-    for attempt in range(len(delays) + 1):
-        wait = _last_call[0] + interval - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        _last_call[0] = time.monotonic()
-        try:
-            return _call_llm_once(provider, user_text, model)
-        except LLMError as e:
-            if attempt < len(delays) and str(e).startswith(("HTTP 429", "HTTP 503", "HTTP 500")):
-                print(f"    … {str(e)[:40]} — retrying in {delays[attempt]}s", flush=True)
-                time.sleep(delays[attempt])
-                continue
-            raise
-    raise LLMError("unreachable")
+    last = None
+    for m in _models_for(provider, model):
+        for attempt in range(2):
+            wait = _last_call[0] + interval - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            _last_call[0] = time.monotonic()
+            try:
+                out = _call_llm_once(provider, user_text, m)
+                if _working_model.get(provider) != m:
+                    print(f"    (using model {m})", flush=True)
+                _working_model[provider] = m
+                return out
+            except LLMError as e:
+                last = e
+                msg = str(e)
+                if msg.startswith("HTTP 429") and attempt == 0:
+                    print(f"    … {m}: rate limited, waiting 20s", flush=True)
+                    time.sleep(20)
+                    continue
+                if msg.startswith(("HTTP 503", "HTTP 500")) and attempt == 0:
+                    time.sleep(3)
+                    continue
+                if msg.startswith(("HTTP 503", "HTTP 500", "HTTP 404", "HTTP 429")):
+                    print(f"    … {m}: {msg[:45]} → trying next model", flush=True)
+                break
+            # other errors (bad key, bad request) are not model-specific
+        if last and not str(last).startswith(("HTTP 503", "HTTP 500", "HTTP 404", "HTTP 429")):
+            raise last
+    raise last or LLMError("no model available")
 
 
 def _call_llm_once(provider: str, user_text: str, model: str | None = None) -> str:
