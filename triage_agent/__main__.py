@@ -20,7 +20,14 @@ def main() -> None:
     ap.add_argument("--out", default="out")
     ap.add_argument("--telegram", action="store_true", help="also send the briefing to your Telegram chat")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--list-models", action="store_true", help="print the Gemini models your key can use, then exit")
     a = ap.parse_args()
+
+    if a.list_models:
+        from .llm import list_gemini_models
+        for name in list_gemini_models():
+            print(name)
+        return
 
     if a.source == "gmail":
         mailbox = GmailMailbox()

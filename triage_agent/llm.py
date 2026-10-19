@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 
 from .models import CATEGORIES, Email
@@ -51,21 +52,29 @@ class LLMError(RuntimeError):
 
 
 def _post(url: str, payload: dict, headers: dict, timeout: int = 60) -> dict:
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", **headers})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (fixed provider URLs only)
-        return json.loads(r.read().decode())
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (fixed provider URLs only)
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:  # surface the provider's reason (e.g. model not found, bad key)
+        detail = e.read().decode("utf-8", "ignore")
+        try:
+            detail = json.loads(detail).get("error", {}).get("message", detail)
+        except (ValueError, AttributeError):
+            pass
+        raise LLMError(f"HTTP {e.code}: {str(detail)[:160]}") from None
 
 
 def call_llm(provider: str, user_text: str, model: str | None = None) -> str:
     model = model or os.environ.get("TRIAGE_MODEL") or DEFAULT_MODELS[provider]
     if provider == "gemini":
-        key = _key("GEMINI_API_KEY")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         out = _post(url, {
             "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
             "contents": [{"role": "user", "parts": [{"text": user_text}]}],
             "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
-        }, {})
+        }, {"x-goog-api-key": _key("GEMINI_API_KEY")})
         return out["candidates"][0]["content"]["parts"][0]["text"]
     if provider == "anthropic":
         out = _post("https://api.anthropic.com/v1/messages", {
@@ -80,6 +89,18 @@ def call_llm(provider: str, user_text: str, model: str | None = None) -> str:
         }, {"Authorization": f"Bearer {_key('OPENAI_API_KEY')}"})
         return out["choices"][0]["message"]["content"]
     raise LLMError(f"unknown provider {provider!r}")
+
+
+def list_gemini_models() -> list[str]:
+    """Models your Gemini key can call with generateContent."""
+    req = urllib.request.Request("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+                                 headers={"x-goog-api-key": _key("GEMINI_API_KEY")})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
+            models = json.loads(r.read().decode()).get("models", [])
+    except urllib.error.HTTPError as e:
+        raise LLMError(f"HTTP {e.code}: {e.read().decode('utf-8', 'ignore')[:200]}") from None
+    return [m["name"].split("/", 1)[-1] for m in models if "generateContent" in m.get("supportedGenerationMethods", [])]
 
 
 def _key(name: str) -> str:
